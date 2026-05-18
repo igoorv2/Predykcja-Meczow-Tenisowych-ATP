@@ -40,7 +40,7 @@ Kluczowe decyzje metodologiczne:
 | draw_size | Liczba zawodników w turnieju | numeryczna |
 | round | Runda turnieju | kategoryczna |
 | best_of | Format meczu (3 lub 5 setów) | numeryczna |
-| rank_diff | Różnica rankingów (A − B) | numeryczna |
+| rank_diff | Różnica rankingów (A - B) | numeryczna |
 | rank_log_diff | Logarytmiczna różnica rankingów | numeryczna |
 | points_diff | Różnica punktów rankingowych | numeryczna |
 | age_diff | Różnica wieku zawodników | numeryczna |
@@ -62,7 +62,7 @@ Kluczowe decyzje metodologiczne:
 ## 📈 Kluczowe wnioski
 
 - **Różnica rankingów** (w postaci logarytmicznej) jest najsilniejszym predyktorem wyniku meczu
-- Skuteczność predykcji rośnie wraz ze wzrostem różnicy rankingów — model najgorzej radzi sobie z meczami wyrównanymi
+- Skuteczność predykcji rośnie wraz ze wzrostem różnicy rankingów - model najgorzej radzi sobie z meczami wyrównanymi
 - Modele ensemble (Boosting) nieznacznie przewyższają pozostałe podejścia
 - Kalibracja modelu Boosting wykazuje dobrą zgodność predykowanych prawdopodobieństw z rzeczywistymi częstościami
 

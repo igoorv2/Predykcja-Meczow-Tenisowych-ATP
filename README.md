@@ -28,10 +28,10 @@ Celem projektu była budowa i porównanie modeli klasyfikacyjnych służących d
 
 Kluczowe decyzje metodologiczne:
 
-- **Symetryzacja danych** — dla każdego meczu utworzono dwie obserwacje (zwycięzca jako zawodnik A i B), eliminując stronniczość wynikającą z kolejności zapisu
-- **rank_log_diff** — logarytmiczna różnica rankingów, uzasadniona nieliniowym charakterem rankingu ATP
-- **form_diff** — różnica formy obliczona przez sliding window z lagiem (zapobieganie data leakage)
-- **Wykluczenie zmiennych pomeczowych** — statystyki setów, gemów, asów itp. celowo pominięte
+- **Symetryzacja danych** - dla każdego meczu utworzono dwie obserwacje (zwycięzca jako zawodnik A i B), eliminując stronniczość wynikającą z kolejności zapisu
+- **rank_log_diff** - logarytmiczna różnica rankingów, uzasadniona nieliniowym charakterem rankingu ATP
+- **form_diff** - różnica formy obliczona przez sliding window z lagiem (zapobieganie data leakage)
+- **Wykluczenie zmiennych pomeczowych** - statystyki setów, gemów, asów itp. celowo pominięte
 
 | Zmienna | Opis | Typ |
 |---------|------|-----|

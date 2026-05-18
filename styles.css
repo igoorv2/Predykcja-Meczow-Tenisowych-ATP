@@ -1,0 +1,53 @@
+#sticky-logo {
+  position: fixed;
+  top: 90px;
+  left: 20px;
+  width: 320px;
+  z-index: 9999;
+  text-align: center;
+}
+
+#sticky-logo img:first-child {
+  width: 260px;
+}
+
+#sticky-logo .sublogo img {
+  width: 150px;
+  margin-left: -45px;
+}
+
+#sticky-logo .sublogo {
+  margin-top: 8px;
+}
+
+body {
+  margin-left: 240px;
+}
+
+#quarto-margin-sidebar {
+  position: sticky;
+  top: 20px;
+  height: 90vh;
+  overflow-y: auto;
+}
+
+#TOC {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+#TOC .active {
+  font-weight: 600;
+  border-left: 3px solid #0d6efd;
+  padding-left: 6px;
+  color: #0d6efd;
+}
+
+#TOC a {
+  text-decoration: none;
+  color: #333;
+}
+
+#TOC a:hover {
+  color: #0d6efd;
+}

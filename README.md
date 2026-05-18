@@ -1,13 +1,13 @@
 # 🎾 Predykcja meczów ATP - Projekt uczenia maszynowego
 
 > Przewidywanie zwycięzcy meczu tenisowego na podstawie danych przedmeczowych.  
-> 7 modeli klasyfikacyjnych | Najlepsza dokładność: **65,2%** (Gradient Boosting)
+> 7 modeli klasyfikacyjnych | Najlepszy model: **65,2%** (Gradient Boosting)
 
 ---
 
 ## 📋 Opis projektu
 
-Celem projektu była budowa i porównanie modeli klasyfikacyjnych służących do przewidywania zwycięzcy meczu tenisowego w turniejach ATP. Kluczowym założeniem było wykorzystanie **wyłącznie danych dostępnych przed meczem** — co odróżnia projekt od wielu podobnych analiz korzystających z danych pomeczowych (asy, błędy, statystyki serwisu).
+Celem projektu była budowa i porównanie modeli klasyfikacyjnych służących do przewidywania zwycięzcy meczu tenisowego w turniejach ATP. Kluczowym założeniem było wykorzystanie **wyłącznie danych dostępnych przed meczem** - co odróżnia projekt od wielu podobnych analiz korzystających z danych pomeczowych (asy, błędy, statystyki serwisu).
 
 ---
 

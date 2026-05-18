@@ -1,4 +1,4 @@
-# 🎾 Predykcja meczów ATP — Projekt uczenia maszynowego
+# 🎾 Predykcja meczów ATP - Projekt uczenia maszynowego
 
 > Przewidywanie zwycięzcy meczu tenisowego na podstawie danych przedmeczowych.  
 > 7 modeli klasyfikacyjnych | Najlepsza dokładność: **65,2%** (Gradient Boosting)
@@ -7,9 +7,10 @@
 
 ## 📋 Opis projektu
 
-Celem projektu była budowa i porównanie modeli klasyfikacyjnych służących do przewidywania zwycięzcy meczu tenisowego w turniejach ATP. Kluczowym założeniem było wykorzystanie **wyłącznie danych dostępnych przed meczem** - co odróżnia projekt od wielu podobnych analiz korzystających z danych pomeczowych (asy, błędy, statystyki serwisu).
+Celem projektu była budowa i porównanie modeli klasyfikacyjnych służących do przewidywania zwycięzcy meczu tenisowego w turniejach ATP. Kluczowym założeniem było wykorzystanie **wyłącznie danych dostępnych przed meczem** — co odróżnia projekt od wielu podobnych analiz korzystających z danych pomeczowych (asy, błędy, statystyki serwisu).
 
 ---
+
 ## 📊 Dane
 
 | Parametr | Wartość |
@@ -51,7 +52,7 @@ Kluczowe decyzje metodologiczne:
 
 ## 🤖 Modele i wyniki
 
-<img width="1021" height="366" alt="image" src="https://github.com/user-attachments/assets/6f56ddd3-6e51-4d03-b433-8d21ba956bf5" />
+<img width="1017" height="377" alt="image" src="https://github.com/user-attachments/assets/ae5a5518-f4e9-485f-81b1-b80e3ac25a8d" />
 
 > Wszystkie modele osiągnęły wyniki powyżej poziomu losowego (50%).  
 > Literatura wskazuje na pułap ~70% dla tego typu zadania ze względu na losowość sportu.
@@ -77,17 +78,28 @@ Projekt zawiera interaktywną aplikację **R Shiny** umożliwiającą:
 
 ---
 
+### Uruchomienie aplikacji Shiny
+```r
+library(shiny)
+shiny::runApp("app.R")
+```
+---
+
 ## 🛠️ Narzędzia
 
 | Narzędzie | Zastosowanie |
 |-----------|-------------|
 | R + Quarto | Główne środowisko analizy |
 | caret | Budowa i tuning modeli ML |
-| ggplot2 | Wizualizacje |
-| tidyverse | Przetwarzanie danych |
-| shiny | Interaktywna aplikacja |
-| gt / pheatmap | Tabele i macierze pomyłek |
+| gbm / randomForest / rpart | Algorytmy ML |
+| ggplot2 / corrplot / plotly | Wizualizacje |
+| dplyr / tidyr | Przetwarzanie danych |
+| slider | Obliczanie formy (sliding window) |
+| shiny | Interaktywna aplikacja predykcyjna |
+| gt / pheatmap / kableExtra | Tabele i macierze pomyłek |
+| mice | Analiza braków danych |
+| rpart.plot | Wizualizacja drzewa decyzyjnego |
 
 ---
-*Projekt wykonany w celach edukacyjnych. Wyniki nie stanowią rekomendacji bukmacherskich.*
 
+*Projekt wykonany w celach edukacyjnych. Wyniki nie stanowią rekomendacji bukmacherskich.*

@@ -15,7 +15,7 @@ Celem projektu była budowa i porównanie modeli klasyfikacyjnych służących d
 
 | Parametr | Wartość |
 |----------|---------|
-| Źródło | [Tennis ATP — GitHub](https://github.com/JeffSackmann/tennis_atp) |
+| Źródło | [Tennis ATP - GitHub](https://github.com/JeffSackmann/tennis_atp) |
 | Sezony | 2020–2024 |
 | Liczba obserwacji | 13 174 meczów |
 | Liczba zmiennych (oryginalne) | 49 |

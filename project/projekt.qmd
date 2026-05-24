@@ -1,0 +1,1111 @@
+---
+title: "Predykcja Meczów Tenisowych ATP"
+author: "Igor Kozak"
+format:
+  html:
+    embed-resources: true
+    theme: cosmo
+    toc: true
+    toc-title: "Spis treści:"
+    toc-depth: 3
+    toc-location: right
+    toc-expand: true
+    smooth-scroll: true
+    anchor-sections: true
+    css: styles.css
+editor: visual
+---
+
+:::: {#sticky-logo}
+![](logo.jpg)
+
+::: sublogo
+![](atp.jpg)
+:::
+::::
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#spis bibliotek
+library(dplyr)
+library(utils)
+library(mice)
+library(plotly)
+library(slider)
+library(tidyr)
+library(gt)
+library(ggplot2)
+library(corrplot)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(knitr)
+library(kableExtra)
+library(gbm)
+library(pheatmap)
+library(randomForest)
+library(shiny)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dane2024 <- read.csv("C:/Users/igork/Desktop/VI_SEMESTR/eksploracja_danych/projekt/atp_matches_2024.csv")
+dane2023 <- read.csv("C:/Users/igork/Desktop/VI_SEMESTR/eksploracja_danych/projekt/atp_matches_2023.csv")
+dane2022 <- read.csv("C:/Users/igork/Desktop/VI_SEMESTR/eksploracja_danych/projekt/atp_matches_2022.csv")
+dane2021 <- read.csv("C:/Users/igork/Desktop/VI_SEMESTR/eksploracja_danych/projekt/atp_matches_2021.csv")
+dane2020 <- read.csv("C:/Users/igork/Desktop/VI_SEMESTR/eksploracja_danych/projekt/atp_matches_2020.csv")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dane1 <- bind_rows(
+  dane2020,
+  dane2021,
+  dane2022,
+  dane2023,
+  dane2024
+)
+```
+
+## 1. Cel badania
+
+Celem badania jest budowa i porównanie modeli klasyfikujących służących do przewidywania zwycięzcy meczu tenisowego w turniejach ATP oraz wybranie najlepszego modelu klasyfikacyjnego.
+
+## 2. Opis projektu
+
+Tenis jest jednym z najpopularniejszych sportów na świecie, a analiza wyników meczu stanowi interesujący problem z punktu widzenia eksploracji danych. W literaturze podkreśla się, że modele predykcyjne ewulowały od prostych rankingów w stronę złożonych algorytmów uczenia maszynowego i metod statystycznych. Pozawalają one analizować różnorodne cechy zawodników i kontekst rozgrywanego meczu.
+
+W dalszej części projektu zostaną przygotowane dane, przeprowadzona eksploracyjna analiza danych oraz zbudowane modele klasyfikacyjne służące do przewidywania wyniku spotkania.
+
+## 3. Zbiór danych
+
+Analizowanymi zbiorami danych są pliki `atp_matches_2020.csv`, `atp_matches_2021.csv`, `atp_matches_2022.csv`, `atp_matches_2023.csv`, `atp_matches_2024.csv`, który pochodzą z publicznego repozytorium GitHub [Tennis ATP dataset](https://github.com/JeffSackmann/tennis_atp/blob/master/atp_matches_2024.csv). Zawierają one informacje o wynikach poszczególnych meczów zawodników biorących w nich udział oraz podstawowe informacje dotyczące turniejów w sezonach 2020-2024. Wszystkie zbiory zostały połączone w jeden zbiór.
+
+### 3.1 Charakterystyka zbioru
+
+Losowe 5 rekordów z połączonych zbiorów danych:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+losowe_mecze <- dane1 %>%
+  sample_n(5)
+
+losowe_mecze %>%
+  gt()
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#dim(dane1)
+```
+
+Zbiór zawiera 13174 obserwacji, a także 49 zmiennych.
+
+W analizie uwzględnio jedynie parametry przedmeczowe oraz charakterystyke turniejów i meczy. Zmiennych opisujących przebieg meczu nie wykorzystano, ponieważ są one dostępne dopiero po zakończeniu spotkania i mogłby prowadzić do nienaturalnego ułatwienia zadnia modelu predykcyjnego.
+
+### 3.2 Braki danych
+
+W analizowanym zbiorze danych występują braki danych co przedstawia poniższy wykres.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dane_dobre <- dane1[, c(
+  "winner_name",
+  "loser_name",
+  "tourney_date",
+  "match_num",
+  "surface",
+  "tourney_level",
+  "draw_size",
+  "round",
+  "best_of",
+  "winner_rank",
+  "loser_rank",
+  "winner_rank_points",
+  "loser_rank_points",
+  "winner_age",
+  "loser_age",
+  "winner_ht",
+  "loser_ht"
+)]
+#miss.proc <- colSums(is.na(dane_dobre)/nrow(dane_dobre)*100)
+#miss.proc
+missing_data <- data.frame(
+  variable = names(dane_dobre),
+  Braki = colSums(is.na(dane_dobre)))
+
+ggplot(missing_data, aes(x = reorder(variable, Braki), y = Braki, fill = Braki)) + geom_col() + coord_flip() + scale_fill_gradient(low = "lightblue", high = "darkblue") + labs(x = "zmienne", y = "liczba braków", title = "Braki danych")
+```
+
+Najwięcej braków występuje w zmiennych związanych z rankingiem zawodników oraz wzrostem. Występują również niewielkie braki w parametrach dotyczących wieku sportowców natomiast pozostałe zmienne nie zawierają brakujących wartości.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#md.pattern(dane_dobre, rotate.names = T)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dane2 <- na.omit(dane_dobre)
+#md.pattern(dane2, rotate.names = T)
+#dim(dane2)
+#View(dane2)
+```
+
+W całym zbiorze występuję 3825 brakujących wartości, jednak dotyczą one jedynie 254 obserwacji, co stanowi około 1.9% całego zbioru danych (13174). Ze względu na niewielki udział tych rekordów zdecydowano się na ich pominięcie w dalszej analizie.
+
+Na dodatek w zbiorze danych zostały zidentyfikowane nieralistyczne wartości wzrostu dla 5 rekordów i zostały usunięte.
+
+```{r}
+#| code-fold: true
+dane2 %>%
+  filter(winner_ht < 160 | loser_ht < 160) %>%
+  select(winner_ht, loser_ht) %>%
+  distinct()
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dane2 <- dane2 %>%
+  filter(
+    !winner_ht %in% c(71),
+    !loser_ht %in% c(71, 15)
+  )
+```
+
+Zidentyfikowano również brakujące wartości w zmiennej surface, które były zapisane jako pusty ciąg znaków. Wartości te zostały pominięte.
+
+```{r}
+#| code-fold: true
+unique(dane2$surface)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dane2 <- dane2 %>%
+  filter(surface != "")
+```
+
+### 3.3 Selekcja i transformacja zmiennych
+
+W oryginalnym zbiorze danych każda obserwacja opisuje mecz w postaci zwycięzca - przegrany, co oznacza że pierwszy zawodnik w rekordzie jest zawsze zwycięzcą spotkania. Taka struktura danych mogłaby wprowadzić stronniczość w modelu.
+
+Dlatego też zastosowano procedurę symetryzacji danych. Dla każdego meczy utworzono dwie obserwajce:
+
+-   zwycięzca jako pierwszy zawodnik,
+
+-   zwycięzca jako drugi zawodnik.
+
+Podejście to zapewnia porównywanie zawodników na podstawie różnic ich cech, a nie kolejności zapisu danych. Symetryzacja danych została wykonana przed podziałem zbioru na próbę treningową i testową w celu zachowania spójnej konstrukcji zmiennych. Alternatywnym podejściem byłoby przeprowadzenie tej procedury dopiero po podziale danych.
+
+Ponadto część zmiennych została przekształcona do postaci różnic pomiędzy zawodnikami, co pozwala modelowi analizować względną przewagę jednego gracza nad drugim. Do tej grupy należą różnice rankingów, wieku, wzrostu oraz liczby punktów.
+
+W celu lepszego uchwycenia różnic poziomu sportowego pomiędzy zawodnikami skonstruowano także zmienną rank_log_diff oraz form_diff. Transformacja logarytmiczna została zastosowana ze względu na nieliniowy charakter rankingu ATP, różnice między zawodnikami z czołówki mają większe znaczenie sportowe niż podobne różnice na dalszych poziomach. Natomiast zmienna form_diff umożliwia określenie bieżącej formy zawodników, która może istotnie wpłynać na wynik meczu.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+matches_winner <- dane2 %>%
+  transmute(
+    player = winner_name,
+    date = tourney_date,
+    match_num = match_num,
+    win = 1
+  )
+
+matches_loser <- dane2 %>%
+  transmute(
+    player = loser_name,
+    date = tourney_date,
+    match_num = match_num,
+    win = 0
+  )
+
+matches_players <- bind_rows(matches_winner, matches_loser)
+
+matches_players <- matches_players %>%
+  arrange(player, date, match_num)
+
+matches_players <- matches_players %>%
+  group_by(player) %>%
+  mutate(
+    win_rate_last5 =
+      slide_dbl(lag(win), mean, .before = 4, .complete = FALSE)
+  ) %>%
+  ungroup()
+
+form_winner <- matches_players %>%
+  select(player, date, match_num, win_rate_last5) %>%
+  rename(
+    winner_name = player,
+    winner_form = win_rate_last5
+  )
+
+form_loser <- matches_players %>%
+  select(player, date, match_num, win_rate_last5) %>%
+  rename(
+    loser_name = player,
+    loser_form = win_rate_last5
+  )
+
+dane2 <- dane2 %>%
+  left_join(
+    form_winner,
+    by = c("winner_name", "tourney_date" = "date", "match_num")
+  ) %>%
+  left_join(
+    form_loser,
+    by = c("loser_name", "tourney_date" = "date", "match_num")
+  )
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dane_a <- dane2 %>%
+  mutate(
+    rank_diff = winner_rank - loser_rank,
+    rank_log_diff = log(winner_rank) - log(loser_rank),
+    points_diff = winner_rank_points - loser_rank_points,
+    age_diff = winner_age - loser_age,
+    height_diff = winner_ht - loser_ht,
+    form_diff = winner_form - loser_form,
+    result = 1
+  )
+
+dane_b <- dane2 %>%
+  mutate(
+    rank_diff = loser_rank - winner_rank,
+    rank_log_diff = log(loser_rank) - log(winner_rank),
+    points_diff = loser_rank_points - winner_rank_points,
+    age_diff = loser_age - winner_age,
+    height_diff = loser_ht - winner_ht,
+    form_diff = loser_form - winner_form,
+    result = 0
+  )
+
+dane_model <- bind_rows(dane_a, dane_b)
+
+dane_model <- dane_model %>%
+  select(
+    surface,
+    tourney_level,
+    draw_size,
+    round,
+    best_of,
+    rank_diff,
+    rank_log_diff,
+    points_diff,
+    age_diff,
+    height_diff,
+    form_diff,
+    result
+  )
+dane_model$form_diff[is.na(dane_model$form_diff)] <- 0
+#View(dane_model)
+```
+
+Tabela przedstawiająca wykorzystane dane w analizie:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+moje_dane <- data.frame(
+  Zmienna = c(
+    "surface",
+    "tourney_level",
+    "draw_size",
+    "round",
+    "best_of",
+    "rank_diff",
+    "rank_log_diff",
+    "points_diff",
+    "age_diff",
+    "height_diff",
+    "form_diff",
+    "result"
+  ),
+  
+  Opis = c(
+    "Nawierzchnia kortu, na której rozgrywany jest mecz",
+    "Poziom turnieju ATP",
+    "Liczba zawodników uczestniczących w turnieju",
+    "Runda turnieju, w której rozgrywany jest mecz",
+    "Liczba setów potrzebnych do wygrania meczu",
+    "Różnica rankingów pomiędzy zawodnikami",
+    "Różnica logarytmicza rankingów pomiędzy zawodnikami",
+    "Różnica punktów rankingowych pomiędzy zawodnikami",
+    "Różnica wieku pomiędzy zawodnikami",
+    "Różnica wzrostu pomiędzy zawodnikami",
+    "Różnica zwycieństw w ostatnich 5 meczach pomiędzy zawodnikami biorących udział w meczu",
+    "Zmienna wynikowa: 1 - zawodnik A wygrał, 0 - zawodnik A przegrał"
+  ),
+  
+  Typ = c(
+    "kategoryczna",
+    "kategoryczna",
+    "numeryczna",
+    "kategoryczna",
+    "numeryczna",
+    "numeryczna",
+    "numeryczna",
+    "numeryczna",
+    "numeryczna",
+    "numeryczna",
+    "numeryczna",
+    "binarna"
+  ),
+  
+  Zakres = c(
+    "Hard, Clay, Grass",
+    "np. A, D, M",
+    "np. 32, 64, 128",
+    "np. R16, SF, F",
+    "3 lub 5",
+    "-2094 do 2094",
+    "od -6.295266 do 6.295266",
+    "od -11858 do 11858",
+    "od -21.6 do 21.6 lat",
+    "od -41 do 41 cm",
+    "od -1 do 1",
+    "0 lub 1"
+  )
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+gt(moje_dane) %>%
+  tab_header(
+    title = "Opis zmiennych"
+  ) %>%
+  cols_align(
+    align = "left"
+  ) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "#2c3e50"),
+      cell_text(color = "white", weight = "bold")
+    ),
+    locations = cells_column_labels(everything())
+  )
+```
+
+```{r}
+#| code-fold: true
+dane_model <- dane_model %>%
+  mutate(
+    surface = as.factor(surface),
+    tourney_level = as.factor(tourney_level),
+    round = as.factor(round)
+  )
+```
+
+Zmienne kategoryczne zostały przekształcone do typu factor w celu ich poprawnego wykorzystania w analizie oraz modelach klasyfikacyjnych.
+
+Tabela przedstawiająca 10 losowo wybranych obserwacji z finalnego zbioru danych, gdzie:
+
+-   kolorem zielonym oznaczono zawodnika który wygrał spotkanie
+
+-   kolorem czerwony definuje zawodnika, który doznał porażki w meczu
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+#| fig-height: 3
+losowe_mecze1 <- dane_model %>%
+  sample_n(10)
+
+dane_pokaz <- losowe_mecze1
+kolor_result <- ifelse(dane_pokaz$result == 1, "#33CC66", "#CF2929")
+
+kolory_komorek <- list(
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  rep("#ffffff", nrow(dane_pokaz)),
+  kolor_result
+)
+
+tabela_f <- plot_ly(
+  type = "table",
+  header = list(
+    values = colnames(dane_pokaz),
+    align = "center",
+    fill = list(color = "#2c3e50"),
+    font = list(color = "white", size = 10)
+  ),
+  cells = list(
+    values = unname(t(dane_pokaz)),
+    align = "center",
+    fill = list(color = kolory_komorek),
+    font = list(size = 10)
+  )
+)
+
+tabela_f <- tabela_f %>%
+  layout(height = 40 + nrow(dane_pokaz) * 28)
+tabela_f
+```
+
+## 4. Analiza zbioru danych
+
+Przed przystąpieniem do budowy modelu zostaną przedstawione krótkie analizy zbioru danych.
+
+### 4.1 Rozkład zmiennej wynikowej
+
+Na początku analizy sprawdzono rozkład zmiennej wynikowej określającej zwycięzcę meczu. Z przedstawionego poniżej wykresu wynika, żę klasy są zbalansowane.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(dane_model, aes(x = factor(result), fill = factor(result))) +
+  geom_bar() +
+  scale_fill_manual(values = c("#4E79A7", "#A0CBE8")) +
+  labs(
+    x = "Wynik meczu",
+    y = "Liczba obserwacji",
+    title = "Rozkład zmiennej wynikowej"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+### 4.2 Różnica wieku zawodników a wynik meczu
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(dane_model, aes(age_diff, fill = factor(result))) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 40,
+                 alpha = 0.5,
+                 position = "identity") +
+  geom_density(alpha = 0.2) +
+  labs(
+    title = "Rozkład różnicy wieku w zależności od wyniku meczu",
+    x = "Różnica wieku",
+    y = "Gęstość",
+    fill = "Wynik meczu")
+```
+
+Rozkłady różnic wieku dla obu klas są bardzo podobne i dużej mierze się pokrywają. Może wynikać to częściowo z konstrukcji zmiennej, która jest obliczana jako różnica wieku pomiedzy zawodnikami. Na podstawie wykresu nie widać jednak wyraźnej zależności pomiędzy różnicą wieku a wynikiem meczu.
+
+### 4.3 Zależność pomiędzy różnicą wzrostu i rankingiem
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(dane_model, aes(height_diff, rank_diff, color = factor(result))) +
+  geom_point(alpha = 0.4) +
+  facet_wrap(~surface) +
+  scale_color_manual(values = c("#e74c3c","#2ecc71")) +
+  labs(
+    title = "Zależność między różnicą wzrostu i rankingiem a wynikiem meczu",
+    x = "Różnica wzrostu",
+    y = "Różnica rankingów",
+    color = "Wynik meczu"
+  )
+```
+
+Wykres przedstawia zależność pomiędzy różnicą wzrostu zawodników a różnicą rankingów z podziałem na nawierzchnię kortu. W większości przypadków obserwacja skupiają się wokół zera, co oznacza ,że zawodnicy często mają podobny wzrost oraz ranking. Można jednak zauważyć ,że na nawieszchni hard nieco częściej wygrywają zawodnicy wyżsi, co może wynikać z ich przewagi serwisowej.
+
+### 4.4 Wpływ przewagi rankingowej i poziomu turnieju
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(dane_model, aes(rank_diff, result)) +
+  stat_summary_bin(
+    fun = mean,
+    bins = 4,
+    geom = "col",
+    fill = "#4E79A7"
+  ) +
+  facet_wrap(~tourney_level) +
+  scale_x_continuous(
+    breaks = c(-2200, -1100, 0, 1100, 2200)
+  ) +
+  scale_y_continuous(limits = c(0,1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Prawdopodobieństwo zwycięstwa w zależności od przewagi rankingowej i poziomu turnieju",
+    x = "Różnica rankingów",
+    y = "Średnie prawdopodobieństwo wygranej"
+  )
+```
+
+Wizualizacja przedstawia średnie prawdopodobieństwo zwycięstwa w zależności od różnicy rankingów zawodników oraz poziomu turnieju. Można zauważyć wyraźną zależność pomiędzy tymi zmiennymi, gdyż wraz ze wzrostem przewagi rankingowej jednego z zawodników rośnie prawdopodobieństwo jego zwycięstwa. Najwyższe wartości obserwowane są przy dużych ujemnych wartościach różnicy rankingów, co oznacza, że zawodnicy o lepszym rankingu częściej wygrywają mecze. Zależność ta jest widoczna dla większości poziomów turniejów.
+
+### 4.5 Korelacja pomiędzy zmiennymi numerycznymi
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+num_vars <- dane_model[,c(
+  "draw_size",
+  "best_of",
+  "rank_diff",
+  "rank_log_diff",
+  "points_diff",
+  "age_diff",
+  "height_diff",
+  "form_diff",
+  "result"
+)]
+
+corr_matrix <- cor(num_vars, use="complete.obs")
+corrplot(corr_matrix,
+         method="color",
+         type="upper",
+         tl.col="black",
+         tl.srt=45)
+```
+
+Interpretacja macierzy korelacji:
+
+-   Najsilniejsze zależności występują pomiedzy zmiennymi związanymi z rankingiem zawodników, co wynika z ich podobnej interpretacji. Jednakże obydwie zmienne pozostowiano w analizie ze względu na możliwość uchwycenia zarównio liniowych jak i nieliniowych zależności.
+
+-   Zmienna result wykazuje zauważalną korelację ze zmiennymi rankingowymi, co sugeruję że przewaga rankingowa ma istotny wpływ na wynik meczu.
+
+-   Występuje brak wysokich korelacji pomiędzy większościa zmiennych wskazuję to, że zestaw cech jest względnie zróżnicowany i może być odpowiedni do wykorzystania w modelach predykcyjnych.
+
+## 5. Metoda analizy
+
+Klasyfikacja przewidująca zwycięzce meczu tenisowego będzie oparta o stworzone modele za pomocą pakietu `caret` programu *R*. Algorytmy które będą używane do analizy klasyfikacyjnej to:
+
+-   Drzewo decyzyjne.
+
+-   Las losowy.
+
+-   Boosting.
+
+-   Regresja logistyczna.
+
+-   Metoda $k$ - najbliższych sąsiadów.
+
+-   Naiwny klasyfikator Bayesa.
+
+-   SVM.
+
+    Zbiór danych zostanie podzielony na próbę uczącą i testową w proporcjach $\frac{2}{3}$ oraz $\frac{1}{3}$.
+
+    Jądro generatora ustawiono na 2026.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dane_model <- dane_model %>%
+  mutate(
+    result = factor(result, levels = c(0,1),
+                    labels = c("player2_win","player1_win"))
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(2026)
+train_index <- createDataPartition(dane_model$result, p = 2/3, list = FALSE)
+train_data <- dane_model[train_index, ]
+test_data <- dane_model[-train_index, ]
+```
+
+## 6. Budowa modeli
+
+### 6.1 Drzewo decyzyjne
+
+Parametrem wpływającym na złożoność modelu jest parametr *cp (complexity parametr)*, który kontroluje proces przycinania drzewa i zapobiega przeuczeniu modelu. W celu wyboru optymalnej wartości parametru *cp* zastosowano walidację krzyżową oraz miarę ROC.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+ctrl <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  repeats = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+model_tree <- train(
+  result ~ .,
+  data = train_data,
+  method = "rpart",
+  metric = "ROC",
+  trControl = ctrl,
+  tuneLength = 10
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+model_tree$results[, c("cp","ROC")]
+```
+
+Podczas wyboru najlepszego parametru cp została wykorzystana metryka ROC (Receiver Operating Characteristic - jest narzędziem do oceny poprawności klasyfikatora, zapewnia ona łączny opis jego czułości i specyficzności). Najwyższą wartość ROC uzyskano dla cp $\approx 0.00078$, dlatego wartość ta została przyjęta jako optymalna dla modelu drzewa decyzyjnego.
+
+Wizualizacja drzewa decyzyjnego prezentuje się następująco
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+rpart.plot(model_tree$finalModel, fallen.leaves = T)
+#max(model_tree$results$ROC)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+pred_tree <- predict(model_tree, newdata = test_data)
+macierz_pomylek <- confusionMatrix(pred_tree, test_data$result)
+#macierz_pomylek
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+mm <- as.data.frame(macierz_pomylek$table)
+ggplot(mm, aes(Prediction, Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), size = 5) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  theme_minimal() +
+  labs(title = "Macierz pomyłek drzewo decyzyjne")
+```
+
+Na podstawie macierzy pomyłek widzimy ,że model sklasyfikował 2648 obserwacji zwycieństwa zawodnika drugiego oraz 2886 przypadkow zwycieństwa zawodnika pierwszego. Natomiast 3053 obserwacji zostało sklasyfikowanych błędnie. W efekcie Accuracy wyniosła 64.4%.
+
+Model nieznacznie lepiej przewiduje zwycięstwo zawodnika pierwszego. Różnica ta jest jednak niewielka i może wynikać z charakterystyki danych oraz sposobu optymalizacji drzewa decyzyjnego, które minimalizuje globalny błąd klasyfikacji.
+
+### 6.2 Lasy losowe
+
+Lasy losowe (Random Forest) należą do metod zespołowych, w których wiele słabych/średnich modeli (drzew) łączy się w jeden silny predyktor. W Random Forest modelem bazowym jest drzewo decyzyjne, jednak w każdym węźle drzewa nie rozważa się wszystkich *p* cech, tylko losowy podzbiór *m* cech (*mtry*). Podział wybierany jest wyłącznie spośród tych *m* cech. Takie podejście zmniejsza korelacje między dzrzewami oraz lepiej redukuje wariancje.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+ctrl <- trainControl(
+  method = "cv",
+  number = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+model_rf <- train(
+  result ~ .,
+  data = train_data,
+  method = "rf",
+  metric = "ROC",
+  trControl = ctrl,
+  tuneLength = 3,
+  ntree = 400
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+pred_rf_final <- predict(model_rf, test_data)
+cm_rf <- confusionMatrix(pred_rf_final, test_data$result)
+#cm_rf
+#max(model_rf$results$ROC)
+
+pheatmap(
+  cm_rf$table,
+  display_numbers = TRUE,
+  color = colorRampPalette(c("white","#2C7FB8"))(50),
+  main = "Macierz pomyłek Random Forest"
+)
+```
+
+Na podstawie macierzy pomyłek widać, że model poprawnie sklasyfikował 5527 obserwacje, natomiast 3063 przypadków zostało sklasyfikowanych błędnie. Ostateczna dokładność modelu Random Forest wyniosła 64.4%.
+
+### 6.3 Boosting
+
+Metoda *Boosting* jest technika uczenia maszynowego polegającą na sekwencyjnym budowaniu wielu słabych modeli predykcyjnych. W przeciwieństwie od metod baggingowych, takich jak Random Forest, kolejne modele są trenowane w taki sposób, aby korygować błędy popełnione przez poprzednie modele.
+
+W efekcie powstaje silny model predykcyjny będący kombinacją wielu słabszych modeli. W pracy zastosowano metodę *Gradient Boosting*, w której kolejne drzewa uczone są na podstawie gradientu funkcji straty.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+model_boost <- train(
+  result ~ .,
+  data = train_data,
+  method = "gbm",
+  metric = "ROC",
+  trControl = ctrl,
+  verbose = FALSE
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#model_boost$bestTune
+plot(model_boost)
+#max(model_boost$results$ROC)
+```
+
+Wykres przedstawia wpływ liczby iteracji Boosting (*n.trees*) oraz maksymalnej głębokości drzewa (*interaction.depth*) na jakość modelu mierzoną miarą ROC. Najlepszą konfiguracją okazało się 100 iteracji oraz głębokość drzewa równa 2.
+
+Zwiększenie liczby iteracji powyżej 100 nie prowadzi już do istotnej poprawy jakości modelu, co sugeruje stabilizację wyników.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+imp <- varImp(model_boost)$importance
+imp$variable <- rownames(imp)
+imp <- imp[order(-imp$Overall),][1:10,]
+
+ggplot(imp, aes(x = reorder(variable, Overall), y = Overall, fill = Overall)) +
+  geom_col() +
+  coord_flip() +
+  geom_text(aes(label = round(Overall,2)), hjust = -0.1, size = 4) +
+  labs(
+    title = "Ważność zmiennych",
+    x = "Nazwa zmiennej",
+    y = "Ważność (%)"
+  ) +
+  theme_minimal() +
+  scale_fill_gradient(low = "skyblue", high = "darkblue") +
+  theme(legend.position = "none")
+```
+
+Powyższy wykres jednoznacznie wskazuje , że najistotniejszym czynnikiem wpływającym na wynik meczu jest zmienna **rank_log_diff**, która opisuje logarytmiczą różnicę rankingów zawodników. Istotny wpływ na predykcję mają również zmienne **points_diff**, **form_diff** oraz **age_diff**.
+
+Należy zauważyć, że wartość 100% dla zmiennej rank_log_diff wynika ze sposobu skalowania miary ważności, w którym najistotniejsza zmienna stanowi punkt odniesienia dla pozostałych. Nie oznacza to, że zmienna ta w pełni determinuje wynik, lecz że ma największy względny wpływ na predykcję w modelu.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+pred_boost <- predict(model_boost, newdata = test_data)
+macierz_boost <- confusionMatrix(pred_boost, test_data$result)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+fourfoldplot(macierz_boost$table,
+             color = c("#D7301F", "#2C7FB8"),
+             conf.level = 0)
+```
+
+Model poprawnie sklasyfikował 5573 obserwacji, przy 3017 błędnych predykcjach. Oznacza to dokładność na poziomie około 65.2%.
+
+### 6.4 Regresja logistyczna
+
+Regresja logistyczna to jedną z podstawowych metod klasyfikacji binarnej. Model opisuje zależności pomiędzy zmiennymi objaśniającymi a prawdopodobieństwem przynależności obserwacji do jednej z dwóch klas. W rozpatrywanym przypadku model estymuje prawdpodobieństwo zwycięstwa jednego z zawodników na podstawie cech opisujących różnice pomiędzy graczami.
+
+Logarytm szansy jest kombinacją liniową:
+
+$$
+log(\frac{p}{1-p})= \beta_0 + \beta_1x_1 + \beta_2x_2 + ...+ \beta_nx_n
+$$
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+model_log <- train(
+  result ~ .,
+  data = train_data,
+  method = "glm",
+  family = "binomial",
+  metric = "ROC",
+  trControl = ctrl
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+pred_log <- predict(model_log, newdata = test_data)
+cm_log <- confusionMatrix(pred_log, test_data$result)
+#cm_log
+#max(model_log$results$ROC)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cm_df <- as.data.frame(cm_log$table)
+
+ggplot(cm_df, aes(Reference, Prediction, size = Freq)) +
+  geom_point(color = "#2C7FB8") +
+  geom_text(aes(label = Freq), color = "black", size = 5) +
+  scale_size(range = c(5, 20)) +
+  guides(size = "none") +
+  labs(
+    title = "Macierz pomyłek regresja logistyczna",
+    x = "",
+    y = ""
+  ) +
+  theme_minimal()
+```
+
+Z macierzy pomyłek otrzymujemy, że model poprawnie sklasyfikował zwycięstwo gracza 1 w 2796 przypadkach, a tenisisty 2 w 2769 przypadkach. Jednocześnie 3025 obserwacji zostało sklasyfikowanych niepoprawnie. Końcowo dokładność modelu regresji logistycznej wyniosła 64.8%.
+
+### 6.5 Metoda $k$- najbliższych sąsiadów
+
+Metoda k-najbliższych sąsiadów (*k-NN*) jest nieparametrycznym algorytmem uczenia nadzorowanego typu *instance-based learrning*. W przeciwieństwie do wielu innych modeli nie buduje ona jawnej funkcji decyzyjnej podczas treningu, lecz przechowuje zbiór uczący i dokonuje predykcji dopiero w momencie klasyfikacji nowej obserwacji.
+
+Predykcja polega na znalezieniu k najbliższych obserwacji w przestrzeni cech oraz przypisaniu klas na podstawie wyboru większościowego wsród tych sąsiadów.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+model_knn <- train(
+  result ~ .,
+  data = train_data,
+  method = "knn",
+  trControl = ctrl,
+  preProcess = c("center", "scale"),
+  tuneLength = 10
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+plot(model_knn)
+#max(model_knn$results$ROC)
+#model_knn
+```
+
+Na podstawie walidacji krzyżowej najwyższą średnią dokładność uzyskano dla wartości k =23.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+pred_knn <- predict(model_knn, newdata = test_data)
+cm_knn <- confusionMatrix(pred_knn, test_data$result)
+#cm_knn
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cm_df <- data.frame(
+  Prediction = c("player2_win","player2_win","player1_win","player1_win"),
+  Reference = c("player2_win","player1_win","player2_win","player1_win"),
+  Freq = c(2602,1601,1693,2694)
+)
+
+cm_df$correct <- cm_df$Prediction == cm_df$Reference
+
+ggplot(cm_df, aes(x = Reference, y = Prediction, fill = correct)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Freq), size = 6) +
+  scale_fill_manual(values = c("white","#2C7FB8")) +
+  theme_minimal() +
+  labs(
+    title = "Macierz pomyłek k-NN",
+    y="",
+    x=""
+  ) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 12),
+    plot.title = element_text(size = 14, face = "bold")
+  )
+```
+
+Z macierzy pomyłek wynika, że 2602 obserwacji zostało poprawnie zaklasyfikowanych jako zwycięstwo gracza 2 i 2694 jako wygrana zawodnika 1. Natomiast 3294 przypadki zostały błędnie sklasyfikowane. W efekecie otrzymano dokładność modelu *k-NN* na poziomie 61.7%.
+
+### 6.6 Naiwny klasyfikator Bayesa
+
+Naiwny klasyfikator Bayesa (*Naive Bayes*) jest probalistycznym algorytmem klasyfikatorem opartym na twierdzeniu Bayesa. Model zakłada warunkową niezależność cech w obrębie danej klasy, co oznacza, że wpływ każdej zmiennej na wynik klasyfikacji jest rozpatrywany niezależnie od pozostałych cech.
+
+Przedstawiona w podrozdziale 4.5 analiza korelacji między zmiennymi wskazała silna zależność między zmiennymi *rank_diff* oraz *rank_log_diff*. A ze względu na założenie warunkowej niezależności cech w modelu *Naive Bayes* zdecydowano się na usunięcie zmiennej *rank_diff* w tym modelu w celu ograniczenia redundacji zmiennych.
+
+$$
+P(x \mid y) = \prod_{j=1}^{p} P(x_j \mid y)
+$$
+
+```{r}
+#| code-fold: true
+train_nb1 <- train_data %>%
+  select(-rank_diff)
+test_nb1 <- test_data %>%
+  select(-rank_diff)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+ctrl <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  repeats = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+model_nb1 <- train(
+  result ~ .,
+  data = train_nb1,
+  method = "nb",
+  metric = "ROC",
+  trControl = ctrl
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+pred_nb1 <- predict(model_nb1, newdata = test_nb1)
+cm_nb1 <- confusionMatrix(pred_nb1, test_nb1$result)
+#cm_nb1
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cm_df <- as.data.frame(cm_nb1$table)
+ggplot(cm_df, aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Freq), size = 5) +
+  scale_fill_gradient(low = "white", high = "#2C7FB8") +
+  theme_minimal() +
+  labs(
+    title = "Macierz pomyłek Naive Bayes",
+    x = "",
+    y = ""
+  )
+```
+
+Przedstawiona powyżej macierz pomyłek wskazuje, że model poprawnie sklasyfikował łącznie 5583 obserwacje. Natomiast 3007 przypadków zostało sklasyfikowanych błędnie. W rezulatacie ostatetczna dokładność modelu *Naive Bayes* na zbiorze testowym wyniosła 65%.
+
+### 6.7 SVM
+
+W metodzie wektorów nośnych (*SVM, Support Vector Machine*) głównym celem jest znalezienie hiperpłaszczyzny maksymalizującej margines między klasami. Model opiera się na tak zwanych wektorach nośnych, czyli obserwacjach znajdujących się najbliżej granicy decyzyjnej.
+
+W praktyce często stosuje się wersję z miękkim marginesem (*soft-margin*), która dopuszcza pewne błędy klasyfikacji. Stopień tolerancji tych błędów kontrolowany jest przez parametr *C*, regulujący kompromis między szerokością marginesu a liczbą błędów klasyfikacji.
+
+$$
+f(x) = \sum_{i=1}^{n} \alpha_i y_i K(x_i, x) + b
+$$ Zastosowanie funkcji jądra (*kernel trick*) umożliwia uchwycenie potencjalnych zależności nieliniowych między zmiennymi. W niejszym projekcie wykorzystano jądro radialne (*RBF*).
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+ctrl <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+model_svm <- train(
+  result ~ .,
+  data = train_data,
+  method = "svmRadial",
+  metric = "ROC",
+  trControl = ctrl,
+  preProcess = c("center", "scale"),
+  tuneLength = 3
+)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+plot(model_svm)
+```
+
+Na podstawie walidacji krzyżowej najwyższe ROC uzyskano dla najniższych wartości parametru C. Wraz ze wzrostem C obserwuje się spadek jakości klasyfikacji - większe C oznacza węższy margines i bardziej restrykcyjne dopasowanie do danych treningowych, co pogarsza generalizację modelu
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+pred_svm <- predict(model_svm, test_data)
+#confusionMatrix(pred_svm, test_data$result)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+cm_dff <- data.frame(
+  Prediction = c("player2_win","player2_win","player1_win","player1_win"),
+  Reference = c("player2_win","player1_win","player2_win","player1_win"),
+  Freq = c(2755,1540,1513,2782)
+)
+cm_dff$Reference <- factor(cm_dff$Reference, levels = c("player1_win", "player2_win"))
+cm_dff$Prediction <- factor(cm_dff$Prediction, levels = c("player1_win", "player2_win"))
+
+ggplot(cm_dff, aes(x = Reference, y = Prediction)) +
+  geom_point(aes(size = Freq), color = "#2C7FB8", alpha = 0.8) +
+  geom_text(aes(label = Freq), size = 5) +
+  scale_size(range = c(6, 18)) +
+  theme_minimal() +
+  labs(
+    title = "Macierz pomyłek SVM",
+    x = "",
+    y = ""
+  ) +
+  theme(
+    axis.text = element_text(size = 12),
+    plot.title = element_text(size = 14, face = "bold"),
+    legend.position = "none"
+  )
+```
+
+Analiza macierzy pomyłek wykazała, że model *SVM* trafnie zdefiniował 2755 zwycięstwa drugiego tenisisty oraz 2782 zwycięstwa pierwszego zawodnika. Przy 3055 błędnych predykcjach, ogólna dokładność klasyfikacji uplasowała sie na poziomie 64.5%.
+
+## 7. Porównanie modeli i podsumowanie
+
+W projekcie zostało zbudowane i przedstawione 7 modeli klasyfikacyjnych. Poniższa tabela przedstawia zebrane wszystkie wyniki:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+tabela_modele <- data.frame(
+  `Typ modelu` = c("drzewiasty",
+                   "ensemble (bagging)",
+                   "ensemble (boosting)",
+                   "liniowy",
+                   "odległościowy",
+                   "bayesowski",
+                   "wektorów nośnych"),
+  
+  Model = c("Decision Tree",
+            "Random Forest",
+            "Boosting",
+            "Logistic Regression",
+            "kNN",
+            "Naive Bayes",
+            "SVM"),
+  
+  Dokładność = c(64.4, 64.4, 65.2, 64.8, 61.7, 65.0, 64.4)
+)
+
+kable(tabela_modele,
+      digits = 1,
+      caption = "Porównanie skuteczności modeli klasyfikacyjnych") |>
+  kable_styling(full_width = FALSE,
+                bootstrap_options = c("striped","hover","condensed")) |>
+  row_spec(3, bold = TRUE, background = "#2C7FB8")
+```
+
+Uzyskane rezultaty wskazują, że najwyższą skuteczność osiągnął model **Boosting** na poziomie 65.2%. Zbliżone wyniki uzyskały również modele Naive Bayes oraz regresja logistyczna. Najniższą skuteczność odnotowano dla metody kNN (61.7%).
+
+Przed wdrożeniem modelu Boosting przeprowadzono analizę kalibracji sprawdzając wiarygodność predykowanych prawdopodobieństw.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+prob_boost <- predict(model_boost, 
+                      newdata = test_data, 
+                      type = "prob")$player1_win
+
+rzeczywiste <- as.numeric(test_data$result == "player1_win")
+
+dane_kal <- data.frame(
+  prob = prob_boost,
+  wynik = rzeczywiste
+) %>%
+  mutate(przedzial = cut(prob, 
+                         breaks = seq(0, 1, by = 0.1),
+                         include.lowest = TRUE)) %>%
+  group_by(przedzial) %>%
+  summarise(
+    srednia_prob = mean(prob),
+    rzeczywista_czest = mean(wynik),
+    n = n()
+  )
+
+ggplot(dane_kal, aes(x = srednia_prob, 
+                     y = rzeczywista_czest)) +
+  geom_abline(intercept = 0, slope = 1, 
+              linetype = "dashed", color = "red") +
+  geom_point(aes(size = n), color = "#2C7FB8") +
+  geom_line(color = "#2C7FB8") +
+  labs(
+    title = "Wykres kalibracji modelu Boosting",
+    x = "Przewidywane prawdopodobieństwo",
+    y = "Rzeczywista częstość wygranej",
+    size = "Liczba obserwacji"
+  ) +
+  theme_minimal() +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1))
+```
+
+Wykres kalibracji modelu **Boosting** przedstawia zależność między prawdopodobieństwami predykowanymi a rzeczywistą częstością wygranych w zbiorze testowym. Czerwona linia przerywana oznacza idealną kalibrację. Punkty leżą bardzo blisko tej linii w środkowym zakresie prawdopodobieństw (0.25-0.75), co świadczy o dobrej kalibracji modelu. Niewielkie odchylenia obserwowane są przy ekstremalnych wartościach prawdopodobieństwa - zarówno bardzo niskich (okolice 0.05) jak i bardzo wysokich (okolice 0.85–0.90). Wynikają one z mniejszej liczby obserwacji w tych przedziałach, co utrudnia precyzyjną estymację. Ogólnie model nie wykazuje systematycznej tendencji do przeszacowywania ani niedoszacowywania pewności swoich predykcji.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+test_data$correct <- pred_boost == test_data$result 
+
+error_analysis <- test_data %>% 
+mutate(rank_group = cut(abs(rank_diff), breaks = c(0,5,10,20,50,100,200,Inf), include.lowest = TRUE)) %>% 
+group_by(rank_group) %>%
+summarise( accuracy = mean(correct), n = n() )
+
+ggplot(error_analysis, aes(rank_group, accuracy)) +
+  geom_col(fill="#2C7FB8") +
+  geom_text(aes(label=n), vjust=-0.5) +
+  geom_hline(yintercept = 0.652, color="red", linetype="dashed", size=0.5) +
+  annotate("text", x=5.2, y=0.97,
+           label="Boosting dokładność = 65.2%",
+           color="red",
+           hjust=0) +
+  ylim(0,1) +
+  labs(
+    title="Skuteczność modelu Boosting w zależności od różnicy rankingów",
+    x="Bezwzględna różnica rankingów ATP",
+    y="Dokładność"
+  )
+```
+
+Przeprowadzono również analizę błędów najlepszego modelu (*Boosting*) w zależności od różnicy rankingów zawodników. Wyniki wskazują, że skuteczność predykcji rośnie wraz ze wzrostem różnicy rankingów. Największe trudności pojawiają się w meczach zawodników o zbliżonym poziomie sportowym.
+
+Warto zauważyć, że w przypadku predykcji wyników sportowych poziom 50% odpowiada losowemu wyborowi zwycięzcy meczu. Oznacza to, że wszystkie zastosowane modele osiągnęły wyniki wyższe od przypadku losowego.
+
+Jednocześnie literatura dotycząca predykcji wyników meczów tenisowych wskazuje, że skuteczność modeli predykcyjnych rzadko przekracza poziom 70%. Wynika to głównie z czynników losowych, takich jak aktualna dyspozycja zawodnika, zmęczenie, presja psychiczna czy drobne urazy.
+
+W tym kontekście uzyskany poziom skuteczności klasyfikacji można uznać za satysfakcjonujący, ponieważ znajduje się on pomiędzy poziomem losowym a wartościami osiąganymi przez najbardziej zaawansowane modele predykcyjne opisane w literaturze.
+
+![](model_accuracy_scale.png){fig-cap="Porównanie skuteczności modeli predykcyjnych." fig-align="center"}
+
+## 8. Wdrożenie modelu
+
+W celu praktycznego zastosowania modelu **Boosting** została stworzona interaktywna aplikacja w technologii R Shiny. Aplikacja umożliwia wprowadzenie parametrów meczu i zawodników, a następnie automatycznie oblicza zmienne różnicowe i zwraca predykcję wyniku wraz z prawdopodobieństwem.
+
+Aplikacja dostępna w pliku *app.R*
+
+```{r, echo=FALSE}
+cat('Uruchomienie aplikacji:')
+cat('Uruchom w konsoli RStudio: shiny::runApp("app.R")')
+```
+
+## Bibliografia
+
+-   Sampaio, T. (2024). *Applications of Machine Learning to Optimize Tennis Performance. Applied Sciences*, 14(13).
+
+-   Bunker, R., Yeung, C., & Susnjak, T. (2023). *A comparative evaluation of Elo ratings and machine learning methods for tennis match prediction.*
+
+-   Majerek D., *Eksploracja danych i uczenie maszynowe*, Politechnika Lubelska, 2026. Dostęp online: <https://dariuszmajerek.github.io/ML_and_DM>, (dostęp 30.04.2026).
+
+-   Mazuch N., *Analiza czynników wpływających na wynik meczu tenisa ziemnego*, praca inżynierska, Politechnika Białostocka, 2025.
+
+-   Biecek P., *Przewodnik po pakiecie R*, dostęp online: <http://www.biecek.pl/R/PrzewodnikPoPakiecieRWydanieIIIInternet.pdf> (dostęp: 30.04.2026).
